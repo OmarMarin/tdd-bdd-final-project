@@ -27,7 +27,7 @@ import os
 import logging
 import unittest
 from decimal import Decimal
-from service.models import Product, Category, db
+from service.models import Product, Category, db, DataValidationError
 from service import app
 from tests.factories import ProductFactory
 
@@ -104,3 +104,165 @@ class TestProductModel(unittest.TestCase):
     #
     # ADD YOUR TEST CASES HERE
     #
+    def test_read_a_product(self):
+        """It should read a product"""
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+        found_product = Product.find(product.id)
+        self.assertEqual(found_product.id, product.id)
+        self.assertEqual(found_product.name, product.name)
+        self.assertEqual(found_product.description, product.description)
+        self.assertEqual(found_product.price, product.price)
+
+    def test_update_a_product(self):
+        """It should update the product"""
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+        product.description = "Mustang"
+        original_id = product.id
+        product.update()
+        self.assertEqual(original_id, product.id)
+        self.assertEqual(product.description, "Mustang")
+        products = Product.all()
+        self.assertEqual(len(products), 1)
+        self.assertEqual(products[0].id, original_id)
+        self.assertEqual(products[0].description, "Mustang")
+
+    def test_delete_a_product(self):
+        """It should delete a product from db"""
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        products = Product.all()
+        self.assertEqual(len(products), 1)
+        product.delete()
+        products = Product.all()
+        self.assertEqual(len(products), 0)
+
+    def test_list_all_products(self):
+        """It should list all products from database"""
+        products = Product.all()
+        self.assertEqual(products, [])
+        for _ in range(3):
+            product = ProductFactory()
+            product.id = None
+            product.create()
+        products = Product.all()
+        self.assertEqual(len(products), 3)
+
+    def test_find_by_name(self):
+        """It should find product from db by name"""
+        for _ in range(3):
+            product = ProductFactory()
+            product.id = None
+            product.create()
+        name = Product.all()[0].name
+        count = len([product for product in Product.all() if product.name == name])
+        found = Product.find_by_name(name)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.name, name)
+
+    def test_find_by_availability(self):
+        """It should find product by availability"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.id = None
+            product.create()
+        avail = products[0].available
+        count = len([product for product in products if product.available == avail])
+        found = Product.find_by_availability(avail)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.available, avail)
+
+    def test_find_by_category(self):
+        """It should filter by category"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.id = None
+            product.create()
+        category = products[0].category
+        count = len([product for product in products if product.category == category])
+        found = Product.find_by_category(category)
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.category, category)
+
+    def test_find_by_price(self):
+        """It should filter by price"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.id = None
+            product.create()
+        price = products[0].price
+        count = len([product for product in products if product.price == price])
+        found = Product.find_by_price(str(price))
+        self.assertEqual(found.count(), count)
+        for product in found:
+            self.assertEqual(product.price, price)
+
+    def test_failed_update(self):
+        """It should raise error while updating"""
+        product = ProductFactory()
+        product.id = None
+        product.create()
+        self.assertIsNotNone(product.id)
+        product.description = "Bronco"
+        product.id = None
+        self.assertRaises(DataValidationError, product.update)
+
+    def test_from_dictionary(self):
+        """Testing creating product from dictionary"""
+        data = {
+            "id": None,
+            "name": "Ranger",
+            "price": "298765.56",
+            "description": "Truck for heavy work",
+            "available": True,
+            "category": "Truck"
+        }
+
+        product = Product()
+        product.deserialize(data)
+        product.create()
+        found = Product.find_by_name("Ranger")
+        for product in found:
+            self.assertIsNotNone(product.id)
+            self.assertEqual(product.name, data["name"])
+            self.assertEqual(product.description, data["description"])
+
+    def test_from_dictionary_errors(self):
+        """Must raise error with invalid input"""
+        data = {
+            "name": "Maverick",
+            "description": "Truck to move in difficult roads",
+            "price": 10000.99,
+            "available": 1, # Here the invalid input
+            "category": "Ban"
+        }
+        product = Product()
+        self.assertRaises(DataValidationError, product.deserialize, data)
+        data1 = {
+            "name": "Maverick",
+            "description": "Truck to move in difficult roads",
+            "price": 10000.99,
+            "available": True,
+            "category": "Ban",
+            "ids": False # Here the attribute error
+        }
+        product = Product()
+        self.assertRaises(DataValidationError, product.deserialize, data1)
+        data2 = {
+            "name": "Maverick",
+            "description": "Truck to move in difficult roads",
+            "price": 10000.99,
+            "available": True,
+            "category": None # Here is the type error
+        }
+        product = Product()
+        self.assertRaises(DataValidationError, product.deserialize, data2)
